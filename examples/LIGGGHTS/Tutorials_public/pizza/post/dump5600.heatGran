@@ -1,0 +1,10 @@
+ITEM: TIMESTEP
+5600
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS mm mm mm
+-0.05 0.05
+-0.05 0.05
+0 0.15
+ITEM: ATOMS id type x y z vx vy vz fx fy fz omegax omegay omegaz radius f_Temp[0] f_heatFlux[0] 
+1 1 0.0328584 0.0105445 0.0953954 0 0 -0.3 0 0 0 0 0 0 0.004 300 0 

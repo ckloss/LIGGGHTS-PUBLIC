@@ -5,6 +5,7 @@
 #include "delete_bonds.h"
 #include "displace_atoms.h"
 #include "minimize.h"
+#include "pizza_settings.h"
 #include "read_data.h"
 #include "read_dump.h"
 #include "read_restart.h"
