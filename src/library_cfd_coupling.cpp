@@ -147,7 +147,7 @@ void allocate_external_int(int    **&data, int len2,int len1,int    initvalue,vo
 }
 /* ---------------------------------------------------------------------- */
 
-void allocate_external_int(int    **&data, int len2,char *keyword,int    initvalue,void *ptr)
+void allocate_external_int(int    **&data, int len2,const char *keyword,int    initvalue,void *ptr)
 {
     //LAMMPS *lmp = (LAMMPS *) ptr;
     FixCfdCoupling* fcfd = (FixCfdCoupling*)locate_coupling_fix(ptr);
@@ -165,7 +165,7 @@ void allocate_external_double(double **&data, int len2,int len1,double initvalue
 
 /* ---------------------------------------------------------------------- */
 
-void allocate_external_double(double **&data, int len2,char* keyword,double initvalue,void *ptr)
+void allocate_external_double(double **&data, int len2,const char* keyword,double initvalue,void *ptr)
 {
     //LAMMPS *lmp = (LAMMPS *) ptr;
     FixCfdCoupling* fcfd = (FixCfdCoupling*)locate_coupling_fix(ptr);
