@@ -246,10 +246,34 @@ void FixNeighlistMesh::pre_force(int)
     }
 
     for(size_t iTri = 0; iTri < nall; iTri++) {
-      TriangleNeighlist & triangle = triangles[iTri];
       handleTriangle(iTri);
-      numAllContacts_ += triangle.contacts.size();
     }
+
+  // prepare memory for partition generation
+  const int nlocal = atom->nlocal;
+
+  particle_indices.clear();
+  particle_triangles.resize(nlocal);
+
+  std::fill_n(particle_triangles.begin(), nlocal, 0);
+
+  // update nneighs
+  for(size_t iTri = 0; iTri < nall; ++iTri) {
+    std::vector<int> & neighbors = triangles[iTri].contacts;
+    for(std::vector<int>::iterator it = neighbors.begin(); it != neighbors.end(); ++it) {
+      const int i =  *it;
+      ++particle_triangles[i];
+    }
+    numAllContacts_ += neighbors.size();
+  }
+
+  for(int i = 0; i < nlocal; ++i) {
+    const int ntriangles = particle_triangles[i];
+    if(ntriangles > 0) {
+      particle_indices.push_back(i);
+      fix_nneighs_->set_vector_atom_int(i, ntriangles);
+    }
+  }
 
     if(globalNumAllContacts_) {
       MPI_Sum_Scalar(numAllContacts_,world);
@@ -266,7 +290,7 @@ void FixNeighlistMesh::handleTriangle(int iTri)
     int *mask = atom->mask;
     int ixMin(0),ixMax(0),iyMin(0),iyMax(0),izMin(0),izMax(0);
     int nlocal = atom->nlocal;
-    double contactDistanceFactor = neighbor->contactDistanceFactor;
+    const double contactDistanceFactor = neighbor->contactDistanceFactor;
 
     neighbors.clear();
 
@@ -299,10 +323,7 @@ void FixNeighlistMesh::handleTriangle(int iTri)
 
                 if(mesh_->resolveTriSphereNeighbuild(iTri,r ? r[iAtom]*contactDistanceFactor : 0. ,x[iAtom],r ? skin : (distmax+skin) ))
                 {
-                  
                   neighbors.push_back(iAtom);
-                  fix_nneighs_->set_vector_atom_int(iAtom, fix_nneighs_->get_vector_atom_int(iAtom)+1); // num_neigh++
-                  
                 }
                 if(bins) iAtom = bins[iAtom];
                 else iAtom = -1;
@@ -331,7 +352,6 @@ void FixNeighlistMesh::handleTriangle(int iTri)
             {
               
               neighbors.push_back(iAtom);
-              fix_nneighs_->set_vector_atom_int(iAtom, fix_nneighs_->get_vector_atom_int(iAtom)+1); // num_neigh++
             }
             if(bins) iAtom = bins[iAtom];
             else iAtom = -1;

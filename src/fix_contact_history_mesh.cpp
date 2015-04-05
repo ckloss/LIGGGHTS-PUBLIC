@@ -383,19 +383,26 @@ void FixContactHistoryMesh::resetDeletionPage(int tid)
     keeppage_[tid]->reset(true);
 }
 
+/* ----------------------------------------------------------------------- */
+
+void FixContactHistoryMesh::markForDeletion(int tid, int i)
+{
+  const int nneighs = fix_nneighs_->get_vector_atom_int(i);
+  keepflag_[i] = keeppage_[tid]->get(nneighs);
+  if (!keepflag_[i])
+    error->one(FLERR,"mesh contact history overflow, boost neigh_modify one");
+}
+
 /* ----------------------------------------------------------------------
      mark all contacts for deletion
 ------------------------------------------------------------------------- */
 
 void FixContactHistoryMesh::markForDeletion(int tid, int ifrom, int ito)
 {
-    for(int i = ifrom; i < ito; i++)
-    {
-      const int nneighs = fix_nneighs_->get_vector_atom_int(i);
-      keepflag_[i] = keeppage_[tid]->get(nneighs);
-      if (!keepflag_[i])
-        error->one(FLERR,"mesh contact history overflow, boost neigh_modify one");
-    }
+  for(int i = ifrom; i < ito; ++i)
+  {
+    markForDeletion(tid, i);
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -407,30 +414,30 @@ void FixContactHistoryMesh::cleanUpContacts()
 
 /* ---------------------------------------------------------------------- */
 
+void FixContactHistoryMesh::cleanUpContact(int i) {
+  const int nneighs = fix_nneighs_->get_vector_atom_int(i);
+
+  for(int j = 0; j < nneighs; ++j)
+  {
+    // delete values
+    if(!keepflag_[i][j])
+    {
+      if(partner_[i][j] > -1)
+      {
+        --npartner_[i];
+      }
+      partner_[i][j] = -1;
+      vectorZeroizeN(&(contacthistory_[i][j*dnum_]),dnum_);
+    }
+  }
+}
+
 void FixContactHistoryMesh::cleanUpContacts(int ifrom, int ito)
 {
-    
-    for(int i = ifrom; i < ito; i++)
-    {
-        const int nneighs = fix_nneighs_->get_vector_atom_int(i);
-
-        for(int j = 0; j < nneighs; j++)
-        {
-            // delete values
-            
-            if(!keepflag_[i][j])
-            {
-                if(partner_[i][j] > -1)
-                {
-                    npartner_[i]--;
-                    
-                }
-                partner_[i][j] = -1;
-                vectorZeroizeN(&(contacthistory_[i][j*dnum_]),dnum_);
-            }
-        }
-        
-    }
+  for(int i = ifrom; i < ito; ++i)
+  {
+    cleanUpContact(i);
+  }
 }
 
 /* ---------------------------------------------------------------------- */
