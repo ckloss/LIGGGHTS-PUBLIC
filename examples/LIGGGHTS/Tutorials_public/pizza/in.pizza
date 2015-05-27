@@ -2,26 +2,27 @@
 
 pizza_basic_settings    default
 
-region		        reg block -0.05 0.05 -0.05 0.05 0. 0.15 units box
-create_box	        1 reg
+region        reg block -0.05 0.05 -0.05 0.05 0. 0.15 units box
+create_box    1 reg
 
 pizza_physics_settings  default
 
 #heat transfer
-fix                     heattransfer all heat/gran initial_temperature 300.
-fix 		        ftco all property/global thermalConductivity peratomtype 100.
-fix 		        ftca all property/global thermalCapacity peratomtype 10.
+fix           heattransfer all heat/gran initial_temperature 300.
+fix           ftco all property/global thermalConductivity peratomtype 100.
+fix           ftca all property/global thermalCapacity peratomtype 10.
 
 #region of insertion
-region		        bc cylinder z 0. 0. 0.045 0.00 0.15 units box
+region        bc cylinder z 0. 0. 0.045 0.00 0.15 units box
 
 #particle distributions and insertion
-fix		        pts1 all particletemplate/sphere 1 atom_type 1 density constant 8000 radius constant 0.004
-fix		        pdd1 all particledistribution/discrete 1.  1 pts1 1.0
-fix		        ins all insert/pack seed 100001 distributiontemplate pdd1 vel constant 0. 0. -0.3 &
-		        insert_every once overlapcheck yes all_in yes particles_in_region 1 region bc
+fix           pts1 all particletemplate/sphere 1 atom_type 1 density constant 8000 radius constant 0.004
+fix           pdd1 all particledistribution/discrete 1.  1 pts1 1.0
+fix           ins all insert/pack seed 100001 distributiontemplate pdd1 &
+  all_in yes insert_every once overlapcheck yes vel constant 0. 0. -0.3 &
+  particles_in_region 1 region bc
 
 pizza_output_settings   default
 
 #start the simulation
-run		        20000 upto
+run           20000 upto
