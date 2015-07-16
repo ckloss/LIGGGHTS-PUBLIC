@@ -5,9 +5,9 @@
    LIGGGHTS is part of the CFDEMproject
    www.liggghts.com | www.cfdem.com
 
-   Christoph Kloss, christoph.kloss@cfdem.com
    Copyright 2009-2012 JKU Linz
-   Copyright 2012-     DCS Computing GmbH, Linz
+   Copyright 2012-2014 DCS Computing GmbH, Linz
+   Copyright 2015-     JKU Linz
 
    LIGGGHTS is based on LAMMPS
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
@@ -17,6 +17,12 @@
    This software is distributed under the GNU General Public License.
 
    See the README file in the top-level directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing authors:
+   Christoph Kloss (JKU Linz, DCS Computing GmbH, Linz)
+   Richard Berger (JKU Linz)
 ------------------------------------------------------------------------- */
 
 #include "math.h"
@@ -354,7 +360,7 @@ void FixInsertStream::init()
     
     FixInsert::init();
 
-    if(fix_multisphere && v_randomSetting != 0)
+    if(fix_multisphere && v_randomSetting != RANDOM_CONSTANT)
         error->fix_error(FLERR,this,"Currently only fix insert/stream with multisphere particles only supports constant velocity");
 
     fix_release = static_cast<FixPropertyAtom*>(modify->find_fix_property("release_fix_insert_stream","property/atom","vector",5,0,style));
@@ -497,6 +503,18 @@ inline int FixInsertStream::is_nearby(int i)
     return ins_face->isOnSurface(pos_projected);
 }
 
+BoundingBox FixInsertStream::getBoundingBox() const {
+  BoundingBox bb = ins_face->getGlobalBoundingBox();
+
+  const double cut = 3*maxrad;
+  bb.extendByDelta(cut);
+
+  const double delta = -(extrude_length + 2*cut);
+  bb.extrude(delta, normalvec);
+  bb.shrinkToSubbox(domain->sublo, domain->subhi);
+  return bb;
+}
+
 /* ----------------------------------------------------------------------
    generate random positions on insertion face
    extrude by random length in negative face normal direction
@@ -628,8 +646,7 @@ void FixInsertStream::x_v_omega(int ninsert_this_local,int &ninserted_this_local
                 
                 if(ntry < maxtry)
                 {
-                    
-                    nins = pti->check_near_set_x_v_omega(pos,v_normal,omega_tmp,quat_insert,xnear,nspheres_near);
+                    nins = pti->check_near_set_x_v_omega(pos,v_normal,omega_tmp,quat_insert,neighList);
                 }
             }
 
@@ -696,18 +713,7 @@ void FixInsertStream::finalize_insertion(int ninserted_spheres_this_local)
         vectorCopy3D(omega_insert,omega_toInsert);
 
         // could ramdonize vel, omega, quat here
-        if(v_randomSetting==1)
-        {
-            v_toInsert[0] = v_insert[0] + v_insertFluct[0] * 2.0 * (random->uniform()-0.50);
-            v_toInsert[1] = v_insert[1] + v_insertFluct[1] * 2.0 * (random->uniform()-0.50);
-            v_toInsert[2] = v_insert[2] + v_insertFluct[2] * 2.0 * (random->uniform()-0.50);
-        }
-        else if(v_randomSetting==2)
-        {
-            v_toInsert[0] = v_insert[0] + v_insertFluct[0] * random->gaussian();
-            v_toInsert[1] = v_insert[1] + v_insertFluct[1] * random->gaussian();
-            v_toInsert[2] = v_insert[2] + v_insertFluct[2] * random->gaussian();
-        }
+        generate_random_velocity(v_toInsert);
 
         // 9-11th value is velocity, 12-14 is omega
         vectorCopy3D(v_toInsert,&release_data[i][8]);
