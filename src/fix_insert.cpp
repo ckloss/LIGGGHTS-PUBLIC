@@ -5,9 +5,9 @@
    LIGGGHTS is part of the CFDEMproject
    www.liggghts.com | www.cfdem.com
 
-   Christoph Kloss, christoph.kloss@cfdem.com
    Copyright 2009-2012 JKU Linz
-   Copyright 2012-     DCS Computing GmbH, Linz
+   Copyright 2012-2014 DCS Computing GmbH, Linz
+   Copyright 2015-     JKU Linz
 
    LIGGGHTS is based on LAMMPS
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
@@ -17,6 +17,12 @@
    This software is distributed under the GNU General Public License.
 
    See the README file in the top-level directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing authors:
+   Christoph Kloss (JKU Linz, DCS Computing GmbH, Linz)
+   Richard Berger (JKU Linz)
 ------------------------------------------------------------------------- */
 
 #include "math.h"
@@ -39,6 +45,8 @@
 #include "math_extra_liggghts.h"
 #include "mpi_liggghts.h"
 #include "vector_liggghts.h"
+#include "volume_mesh.h"
+#include "probability_distribution.h"
 
 using namespace LAMMPS_NS;
 using namespace FixConst;
@@ -78,10 +86,7 @@ FixInsert::FixInsert(LAMMPS *lmp, int narg, char **arg) :
   // set defaults
   init_defaults();
 
-  xnear = NULL;
-
   // parse args
-  
   bool hasargs = true;
   while(iarg < narg && hasargs)
   {
@@ -174,7 +179,7 @@ FixInsert::FixInsert(LAMMPS *lmp, int narg, char **arg) :
           iarg += 5;
       } else if (strcmp(arg[iarg+1],"uniform") == 0) {
           if (iarg+8 > narg) error->fix_error(FLERR,this,"not enough keyword for 'uniform'");
-          v_randomSetting = 1; //switch 1...distribute with equal prop.
+          v_randomSetting = RANDOM_UNIFORM;
           v_insert[0] = atof(arg[iarg+2]);
           v_insert[1] = atof(arg[iarg+3]);
           v_insert[2] = atof(arg[iarg+4]);
@@ -184,7 +189,7 @@ FixInsert::FixInsert(LAMMPS *lmp, int narg, char **arg) :
           iarg += 8;
       } else if (strcmp(arg[iarg+1],"gaussian") == 0) {
           if (iarg+8 > narg) error->fix_error(FLERR,this,"not enough keyword for 'gaussian'");
-          v_randomSetting = 2; //switch 2...distribute with gaussian distrib.
+          v_randomSetting = RANDOM_GAUSSIAN;
           v_insert[0] = atof(arg[iarg+2]);
           v_insert[1] = atof(arg[iarg+3]);
           v_insert[2] = atof(arg[iarg+4]);
@@ -230,7 +235,6 @@ FixInsert::FixInsert(LAMMPS *lmp, int narg, char **arg) :
       } else error->fix_error(FLERR,this,"expecting 'random', template' or 'constant' after keyword 'quat'");
       hasargs = true;
     }
-    
     else if(strcmp(style,"insert") == 0) error->fix_error(FLERR,this,"unknown keyword");
   }
 
@@ -341,7 +345,7 @@ void FixInsert::init_defaults()
 
   exact_number = 1;
 
-  v_randomSetting = 0;
+  v_randomSetting = RANDOM_CONSTANT;
   vectorZeroize3D(v_insert);
   vectorZeroize3D(v_insertFluct);
   vectorZeroize3D(omega_insert);
@@ -492,7 +496,6 @@ double FixInsert::max_r_bound()
 
 double FixInsert::extend_cut_ghost()
 {
-    
     return 2.*fix_distribution->max_r_bound();
 }
 
@@ -519,7 +522,6 @@ void FixInsert::pre_exchange()
   int ninsert_this, ninsert_this_local; // global and local # bodies to insert this time-step
 
   // just return if should not be called on this timestep
-  
   if (next_reneighbor != update->ntimestep || most_recent_ins_step == update->ntimestep) return;
   most_recent_ins_step = update->ntimestep;
 
@@ -543,17 +545,19 @@ void FixInsert::pre_exchange()
   // distribute ninsert_this across processors
   ninsert_this_local = distribute_ninsert_this(ninsert_this);
   
+
   // re-allocate list if necessary
-  
   if(ninsert_this_local > ninsert_this_max_local)
   {
       fix_distribution->random_init_list(ninsert_this_local);
       ninsert_this_max_local = ninsert_this_local;
   }
 
+
   // generate list of insertions
   // number of inserted particles can change if exact_number = 0
   
+
   ninsert_this_local = fix_distribution->randomize_list(ninsert_this_local,groupbit,exact_number);
   
   MPI_Sum_Scalar(ninsert_this_local,ninsert_this,world);
@@ -572,7 +576,6 @@ void FixInsert::pre_exchange()
   }
   else if(ninsert_this < 0)
   {
-      
       error->fix_error(FLERR,this,"Particle insertion: Internal error");
   }
 
@@ -589,6 +592,7 @@ void FixInsert::pre_exchange()
       error->warning(FLERR,msg);
   }
 
+
   // warn if max # insertions exceeded by random processes
   if (ninsert_exists && ninserted + ninsert_this > ninsert)
   {
@@ -596,12 +600,11 @@ void FixInsert::pre_exchange()
   }
 
   // fill xnear array with particles to check overlap against
-  
   // add particles in insertion volume to xnear list
-  nspheres_near = 0;
-  xnear = NULL;
+  neighList.reset();
+
   if(check_ol_flag)
-      nspheres_near = load_xnear(ninsert_this_local);
+    load_xnear(ninsert_this_local);
 
   // insertion counters in this step
   int ninserted_this = 0, ninserted_spheres_this = 0;
@@ -609,13 +612,14 @@ void FixInsert::pre_exchange()
   double mass_inserted_this = 0.;
   double mass_inserted_this_local = 0.;
 
+
   // randomize insertion positions and set v, omega
   // also performs overlap check via xnear if requested
   // returns # bodies and # spheres that could actually be inserted
   x_v_omega(ninsert_this_local,ninserted_this_local,ninserted_spheres_this_local,mass_inserted_this_local);
 
+
   // actual particle insertion
-  
   ninserted_spheres_this_local = fix_distribution->insert(ninserted_this_local);
 
   // warn if max # insertions exceeded by random processes
@@ -623,6 +627,7 @@ void FixInsert::pre_exchange()
   {
       error->warning(FLERR,"INFO: Particle insertion: Number of particles to insert was slightly exceeded by random process");
   }
+
 
   // set tag # of new particles beyond all previous atoms, reset global natoms
   // if global map exists, reset it now instead of waiting for comm
@@ -640,13 +645,13 @@ void FixInsert::pre_exchange()
     }
   }
 
+
   // give particle distributions the chance to do some wrap-up
-  
   fix_distribution->finalize_insertion();
 
   // give derived classes the chance to do some wrap-up
-  
   finalize_insertion(ninserted_spheres_this_local);
+
 
   // tally stats
   MPI_Sum_Scalar(ninserted_this_local,ninserted_this,world);
@@ -657,9 +662,6 @@ void FixInsert::pre_exchange()
 
   if(ninserted_this < ninsert_this && comm->me == 0)
       error->warning(FLERR,"Particle insertion: Less insertions than requested");
-
-  // free local memory
-  if(xnear) memory->destroy(xnear);
 
   // next timestep to insert
   if (insert_every && (!ninsert_exists || ninserted < ninsert)) next_reneighbor += insert_every;
@@ -694,7 +696,6 @@ int FixInsert::distribute_ninsert_this(int ninsert_this)
     MPI_Allgather(&fraction_local,1,MPI_DOUBLE,fraction_local_all,1,MPI_DOUBLE,world);
 
     // proc0 calculates ninsert_this_local for all processes
-    
     if(me == 0)
     {
         // remove fractions < 2% / nprocs
@@ -723,11 +724,9 @@ int FixInsert::distribute_ninsert_this(int ninsert_this)
             ninsert_this_local_all[iproc] = static_cast<int>(fraction_local_all[iproc]*static_cast<double>(ninsert_this));
             remainder[iproc] = fraction_local_all[iproc]*static_cast<double>(ninsert_this) - ninsert_this_local_all[iproc];
             rsum += remainder[iproc];
-            
         }
 
         ngap = round(rsum);
-        
         for(int i = 0; i < ngap; i++)
         {
             r = random->uniform() * static_cast<double>(ngap);
@@ -771,42 +770,54 @@ int FixInsert::count_nnear()
 }
 
 /* ----------------------------------------------------------------------
-   fill xnear with nearby particles
+   fill neighbor list with nearby particles
 ------------------------------------------------------------------------- */
 
-int FixInsert::load_xnear(int ninsert_this_local)
+int FixInsert::load_xnear(int)
 {
-  // count nearby spheres
-  // setup for allgatherv
-  int nspheres_near_local = count_nnear();
-
-  // data size per particle: x and radius
-  //int n = 4*nspheres_near;
-
-  // xnear is for my atoms + atoms to be inserted
-  
-  memory->create(xnear,nspheres_near_local + ninsert_this_local*fix_distribution->max_nspheres(), 4, "FixInsert::xnear");
-
-  // load up xnear array with local and ghosts
+  // load up neighbor list with local and ghosts
 
   double **x = atom->x;
   double *radius = atom->radius;
-  int nall = atom->nlocal + atom->nghost;
+  const int nall = atom->nlocal + atom->nghost;
 
-  int ncount = 0;
-  for (int i = 0; i < nall; i++)
-  {
-    if (is_nearby(i))
+  BoundingBox bb = getBoundingBox();
+  neighList.reset();
+
+#ifdef LIGGGHTS_DEBUG
+  printf("subdomain bounding box: [%g, %g] x [%g, %g] x [%g, %g]\n", domain->sublo[0], domain->subhi[0], domain->sublo[1], domain->subhi[1], domain->sublo[2], domain->subhi[2]);
+#endif
+
+  if(neighList.setBoundingBox(bb, maxrad)) {
+    for (int i = 0; i < nall; ++i)
     {
-      xnear[ncount][0] = x[i][0];
-      xnear[ncount][1] = x[i][1];
-      xnear[ncount][2] = x[i][2];
-      xnear[ncount][3] = radius[i];
-      ncount++;
+      if (is_nearby(i))
+      {
+        neighList.insert(x[i], radius[i]);
+      }
     }
   }
 
-  return nspheres_near_local;
+  return neighList.count();
+}
+
+/* ----------------------------------------------------------------------
+   generate random velocity based on random setting
+------------------------------------------------------------------------- */
+
+void FixInsert::generate_random_velocity(double * velocity) {
+  switch(v_randomSetting) {
+    case RANDOM_UNIFORM:
+      velocity[0] = v_insert[0] + v_insertFluct[0] * 2.0 * (random->uniform()-0.50);
+      velocity[1] = v_insert[1] + v_insertFluct[1] * 2.0 * (random->uniform()-0.50);
+      velocity[2] = v_insert[2] + v_insertFluct[2] * 2.0 * (random->uniform()-0.50);
+      break;
+
+    case RANDOM_GAUSSIAN:
+      velocity[0] = v_insert[0] + v_insertFluct[0] * random->gaussian();
+      velocity[1] = v_insert[1] + v_insertFluct[1] * random->gaussian();
+      velocity[2] = v_insert[2] + v_insertFluct[2] * random->gaussian();
+  }
 }
 
 /* ----------------------------------------------------------------------

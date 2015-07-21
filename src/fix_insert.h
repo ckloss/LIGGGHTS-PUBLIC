@@ -5,9 +5,9 @@
    LIGGGHTS is part of the CFDEMproject
    www.liggghts.com | www.cfdem.com
 
-   Christoph Kloss, christoph.kloss@cfdem.com
    Copyright 2009-2012 JKU Linz
-   Copyright 2012-     DCS Computing GmbH, Linz
+   Copyright 2012-2014 DCS Computing GmbH, Linz
+   Copyright 2015-     JKU Linz
 
    LIGGGHTS is based on LAMMPS
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
@@ -19,6 +19,12 @@
    See the README file in the top-level directory.
 ------------------------------------------------------------------------- */
 
+/* ----------------------------------------------------------------------
+   Contributing authors:
+   Christoph Kloss (JKU Linz, DCS Computing GmbH, Linz)
+   Richard Berger (JKU Linz)
+------------------------------------------------------------------------- */
+
 #ifdef FIX_CLASS
 
 #else
@@ -27,6 +33,8 @@
 #define LMP_FIX_INSERT_H
 
 #include "fix.h"
+#include "bounding_box.h"
+#include "region_neighbor_list.h"
 
 namespace LAMMPS_NS {
 
@@ -50,9 +58,9 @@ class FixInsert : public Fix {
 
   double compute_vector(int index);
 
-  virtual double min_rad(int);  
-  virtual double max_rad(int);  
-  virtual double max_r_bound();  
+  virtual double min_rad(int);
+  virtual double max_rad(int);
+  virtual double max_r_bound();
   int min_type();
   int max_type();
 
@@ -122,8 +130,7 @@ class FixInsert : public Fix {
   int maxattempt;
 
   // positions generated, and for overlap check
-  int nspheres_near;
-  double **xnear;
+  LIGGGHTS::RegionNeighborList neighList;
 
   // velocity and ang vel distribution
   // currently constant for omega - could also be a distribution
@@ -165,11 +172,15 @@ class FixInsert : public Fix {
   virtual int load_xnear(int);
   virtual int count_nnear();
   virtual int is_nearby(int) = 0;
+  virtual BoundingBox getBoundingBox() const = 0;
 
   virtual void x_v_omega(int,int&,int&,double&) = 0;
   virtual double insertion_fraction() = 0;
 
   virtual void finalize_insertion(int){};
+
+ protected:
+  void generate_random_velocity(double * velocity);
 
  private:
 

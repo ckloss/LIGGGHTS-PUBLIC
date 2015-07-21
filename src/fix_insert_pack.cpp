@@ -5,9 +5,9 @@
    LIGGGHTS is part of the CFDEMproject
    www.liggghts.com | www.cfdem.com
 
-   Christoph Kloss, christoph.kloss@cfdem.com
    Copyright 2009-2012 JKU Linz
-   Copyright 2012-     DCS Computing GmbH, Linz
+   Copyright 2012-2014 DCS Computing GmbH, Linz
+   Copyright 2015-     JKU Linz
 
    LIGGGHTS is based on LAMMPS
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
@@ -17,6 +17,12 @@
    This software is distributed under the GNU General Public License.
 
    See the README file in the top-level directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing authors:
+   Christoph Kloss (JKU Linz, DCS Computing GmbH, Linz)
+   Richard Berger (JKU Linz)
 ------------------------------------------------------------------------- */
 
 #include "math.h"
@@ -320,6 +326,17 @@ inline int FixInsertPack::is_nearby(int i)
     return 0;
 }
 
+BoundingBox FixInsertPack::getBoundingBox() const {
+  BoundingBox bb(ins_region->extent_xlo, ins_region->extent_xhi,
+                 ins_region->extent_ylo, ins_region->extent_yhi,
+                 ins_region->extent_zlo, ins_region->extent_zhi);
+
+  const double cut = 2*maxrad;
+  bb.extendByDelta(cut);
+  bb.shrinkToSubbox(domain->sublo, domain->subhi);
+  return bb;
+}
+
 /* ----------------------------------------------------------------------
    calc # of maximum tries
    propertional to total desired # of particles to insert on this
@@ -378,18 +395,7 @@ void FixInsertPack::x_v_omega(int ninsert_this_local,int &ninserted_this_local, 
             // randomize vel, omega, quat here
             vectorCopy3D(v_insert,v_toInsert);
             // could ramdonize vel, omega, quat here
-            if(v_randomSetting==1)
-            {
-                v_toInsert[0] = v_insert[0] + v_insertFluct[0] * 2.0 * (random->uniform()-0.50);
-                v_toInsert[1] = v_insert[1] + v_insertFluct[1] * 2.0 * (random->uniform()-0.50);
-                v_toInsert[2] = v_insert[2] + v_insertFluct[2] * 2.0 * (random->uniform()-0.50);
-            }
-            if(v_randomSetting==2)
-            {
-                v_toInsert[0] = v_insert[0] + v_insertFluct[0] * random->gaussian();
-                v_toInsert[1] = v_insert[1] + v_insertFluct[1] * random->gaussian();
-                v_toInsert[2] = v_insert[2] + v_insertFluct[2] * random->gaussian();
-            }
+            generate_random_velocity(v_toInsert);
 
             if(quat_random_)
                 MathExtraLiggghts::random_unit_quat(random,quat_insert);
@@ -432,24 +438,13 @@ void FixInsertPack::x_v_omega(int ninsert_this_local,int &ninserted_this_local, 
                 // randomize vel, omega, quat here
                 vectorCopy3D(v_insert,v_toInsert);
 
-                // could ramdonize vel, omega, quat here
-                if(v_randomSetting==1)
-                {
-                    v_toInsert[0] = v_insert[0] + v_insertFluct[0] * 2.0 * (random->uniform()-0.50);
-                    v_toInsert[1] = v_insert[1] + v_insertFluct[1] * 2.0 * (random->uniform()-0.50);
-                    v_toInsert[2] = v_insert[2] + v_insertFluct[2] * 2.0 * (random->uniform()-0.50);
-                }
-                else if(v_randomSetting==2)
-                {
-                    v_toInsert[0] = v_insert[0] + v_insertFluct[0] * random->gaussian();
-                    v_toInsert[1] = v_insert[1] + v_insertFluct[1] * random->gaussian();
-                    v_toInsert[2] = v_insert[2] + v_insertFluct[2] * random->gaussian();
-                }
+                // could randomize vel, omega, quat here
+                generate_random_velocity(v_toInsert);
 
                 if(quat_random_)
                     MathExtraLiggghts::random_unit_quat(random,quat_insert);
 
-                nins = pti->check_near_set_x_v_omega(pos,v_toInsert,omega_insert,quat_insert,xnear,nspheres_near);
+                nins = pti->check_near_set_x_v_omega(pos,v_toInsert,omega_insert,quat_insert,neighList);
 
             }
 
@@ -463,6 +458,8 @@ void FixInsertPack::x_v_omega(int ninsert_this_local,int &ninserted_this_local, 
     }
     
 }
+
+
 
 /* ---------------------------------------------------------------------- */
 

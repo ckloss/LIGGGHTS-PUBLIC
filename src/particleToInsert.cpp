@@ -5,9 +5,9 @@
    LIGGGHTS is part of the CFDEMproject
    www.liggghts.com | www.cfdem.com
 
-   Christoph Kloss, christoph.kloss@cfdem.com
    Copyright 2009-2012 JKU Linz
-   Copyright 2012-     DCS Computing GmbH, Linz
+   Copyright 2012-2014 DCS Computing GmbH, Linz
+   Copyright 2015-     JKU Linz
 
    LIGGGHTS is based on LAMMPS
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
@@ -17,6 +17,12 @@
    This software is distributed under the GNU General Public License.
 
    See the README file in the top-level directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing authors:
+   Christoph Kloss (JKU Linz, DCS Computing GmbH, Linz)
+   Richard Berger (JKU Linz)
 ------------------------------------------------------------------------- */
 
 #include "particleToInsert.h"
@@ -115,6 +121,24 @@ int ParticleToInsert::check_near_set_x_v_omega(double *x,double *v, double *omeg
     vectorCopy3D(x_ins[0],xnear[nnear]);
     xnear[nnear][3] = radius_ins[0];
     nnear++;
+
+    return 1;
+}
+
+int ParticleToInsert::check_near_set_x_v_omega(double *x,double *v, double *omega, double *quat, LIGGGHTS::RegionNeighborList & neighList)
+{
+    vectorCopy3D(x,x_ins[0]);
+
+    if(neighList.hasOverlap(x_ins[0], radius_ins[0])) {
+        return 0;
+    }
+
+    // no overlap with any other - success
+
+    vectorCopy3D(v,v_ins);
+    vectorCopy3D(omega,omega_ins);
+
+    neighList.insert(x_ins[0], radius_ins[0]);
 
     return 1;
 }
